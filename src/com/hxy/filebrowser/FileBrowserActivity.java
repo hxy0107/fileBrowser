@@ -1,6 +1,7 @@
 package com.hxy.filebrowser;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -24,6 +25,7 @@ import android.widget.BaseAdapter;
 import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 public class FileBrowserActivity extends Activity {
 	//file root 
@@ -75,6 +77,7 @@ public class FileBrowserActivity extends Activity {
 				File clickFile=datas[arg2];
 				longFile=clickFile;
 				menus=new String[]{"delete","rename"};
+				//define intent 
 				Intent openMenu=new Intent(FileBrowserActivity.this,GetFileTreeActivity.class);
 				openMenu.putExtra("menus1", menus);
 				if(clickFile.isDirectory()){
@@ -109,7 +112,6 @@ public class FileBrowserActivity extends Activity {
 	
 	
 	
-	
 	private void openFile(File f){
 		Intent intent=new Intent();
 		intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -119,13 +121,62 @@ public class FileBrowserActivity extends Activity {
 		startActivity(intent);
 	}
 	private void deleteFolder(File path){
+		getAllFiles(path);
+		//allFiles is a arraylist<>
+		while(allFiles.size()!=0){
+			for(int i=0;i<allFiles.size();i++){
+				File file=allFiles.get(i);
+				if(file.isFile()){
+					boolean delete=file.delete();
+					if(delete){
+						allFiles.remove(i);
+					}else if(file.isDirectory()){
+						try{
+							boolean deleted=file.delete();
+							if(deleted)
+							{	allFiles.remove(i);}
+						}catch(Exception e){
+								e.printStackTrace();
+							}
+						}
+					}
+					
+				}
+			}
 		
 	}
+	
+	//decide the type for MimeType
 	private String getMIMEType(File f){
+		String type="";
+		String fName=f.getName();
+		String end=fName.substring(fName.lastIndexOf(".")+1,fName.length()).toLowerCase();
+		//decide type result from end
+		if(end.equals("m4a")||end.equals("mp3")||end.equals("mid")||end.equals("xmf")||
+				end.equals("ogg")||end.equals("wav")){
+			type="audio";
+		}else if(end.equals("3gp")||end.equals("mp4")){
+			type="video";
+		}else if(end.equals("jpg")||end.equals("gif")||end.equals("png")||
+				end.endsWith("jpeg")||end.endsWith("bmp")){
+			type="image";
+		}else if(end.endsWith("apk")){
+			type="application/vnd.android.package-archive";
+		}else if(end.endsWith("txt")||end.endsWith("java")){
+			type="text";
+		}else{
+			type="*";
+		}
+		//?
+		if(end.endsWith("apk")){}
+		else{
+			type+="/*";
+		}
 		
-		
-		return null;
+		return type;
 	}
+	
+	
 	 private void loadFiles(File directory){
 		nowFile=directory;
 		setTitle(nowFile.getPath());
@@ -199,14 +250,116 @@ public class FileBrowserActivity extends Activity {
 		
 	}
 	public boolean onMenuItemSelected(int featureId,MenuItem item){
-		return isBack;
+		if(item.getTitle().toString().equals("exit")){
+			FileBrowserActivity.this.finish();
+			System.exit(1);
+			
+		}else if(item.getTitle().toString().endsWith("new")){
+			String name=System.currentTimeMillis()+"";
+			File file=new File(nowFile.getPath()+"/"+name.substring(name.length()-5));
+			try{
+				boolean finish=file.createNewFile();
+				loadFiles(nowFile);
+				if(finish){
+					Toast.makeText(this, " new file success ", Toast.LENGTH_SHORT).show();
+				}
+			}catch(IOException e){
+				e.printStackTrace();
+			}
+		}
+		
+		return super.onMenuItemSelected(featureId, item);
 		
 	}
+	//activity callback method,defined for longpress
 	protected void onActivityResult(int requestCode,int resultCode,Intent data){
 		
+		if(resultCode==RESULT_OK){
+			String exec=data.getStringExtra("exec");
+			switch(requestCode){
+			//director
+			case 1:
+				if(exec.equals("delete")){
+					if(longFile!=null){
+						if(longFile.exists()){
+							try{
+								File file=new File(longFile.getPath());
+								deleteFolder(file);
+								if(allFiles.size()==0){
+									boolean deleted=file.delete();
+									if(deleted){
+										Log.e(Tag,longFile.getName()+"delete succee");
+									}else{
+										Log.e(Tag,"left :"+allFiles.size()+"not delete");
+									}
+								}
+								
+							}catch(Exception e){
+								e.printStackTrace();
+							}
+						}else if(exec.equals("rename")){
+							String path=longFile.getPath();
+							//data is intent
+							String name=data.getStringExtra("name");
+							File newFile=new File(longFile.getParent()+"/"+name);
+							//boolean java.io.File.renameTo(File newPath);
+							longFile.renameTo(newFile);
+						}
+					}
+				}
+				break;
+			case 2:
+				if(exec.equals("delete")){
+					if(longFile!=null){
+						if(longFile.exists()){
+							try{
+								File file=new File(longFile.getPath());
+								boolean delete=file.delete();
+								if(delete){
+									Log.e(Tag,longFile.getName()+"delete success");
+								}
+							}catch(Exception e){
+								e.printStackTrace();
+							}
+						}else if(exec.equals("rename")){
+							String path=longFile.getPath();
+							String name=data.getStringExtra("name");
+							int index=path.lastIndexOf(".");
+							String fileType="";
+							if(index!=-1){
+								fileType=path.substring(index);
+							}
+							File newFile=new File(longFile.getParent()+"/"+name+fileType);
+							Log.e(Tag,"new name is : "+newFile.getName());
+							longFile.renameTo(newFile);
+						}
+					}
+				}
+				break;
+				default:
+					break;
+			}
+			loadFiles(nowFile);
+		}
+		super.onActivityResult(requestCode, resultCode, data);
 	}
 	
 	
+	//search all the current files,used after review the view
+	ArrayList<File> allFiles=new ArrayList<File>();
+	
+	void getAllFiles(File path){
+		File[] files=path.listFiles();
+		for(int i=0;i<files.length;i++)
+		{
+			File file=files[i];
+			allFiles.add(file);
+			if(file.isDirectory()){
+				getAllFiles(file);
+			}
+		}
+		Log.v(Tag,"allFile.size():"+allFiles.size()+" ");
+	}
 	
 	
 	
